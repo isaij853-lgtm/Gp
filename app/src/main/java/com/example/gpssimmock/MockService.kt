@@ -12,17 +12,12 @@ import android.os.Build
 import android.os.IBinder
 import android.util.Log
 
-/**
- * Servicio en primer plano que inyecta la última coordenada del simulador
- * como ubicación de prueba del proveedor GPS puro (LocationManager).
- * Requiere: app seleccionada como "app de ubicación ficticia" en Opciones
- * de desarrollador + permiso de ubicación.
- */
 class MockService : Service() {
 
     private var running = false
     private var worker: Thread? = null
     private var providerAdded = false
+    private val nm by lazy { getSystemService(NotificationManager::class.java) }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -31,15 +26,24 @@ class MockService : Service() {
         MockHolder.lm = getSystemService(Context.LOCATION_SERVICE) as LocationManager
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        crearCanal()
+    private fun notificar(texto: String) {
         val n = Notification.Builder(this, "mock")
             .setSmallIcon(android.R.drawable.ic_menu_mylocation)
             .setContentTitle("GPS Simulador")
-            .setContentText("Ubicación ficticia activa")
+            .setContentText(texto)
             .setOngoing(true)
             .build()
-        startForeground(1, n)
+        nm.notify(1, n)
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        crearCanal()
+        startForeground(1, Notification.Builder(this, "mock")
+            .setSmallIcon(android.R.drawable.ic_menu_mylocation)
+            .setContentTitle("GPS Simulador")
+            .setContentText("Iniciando…")
+            .setOngoing(true)
+            .build())
 
         if (!running) {
             running = true
@@ -48,7 +52,6 @@ class MockService : Service() {
                 while (running) {
                     val lm = MockHolder.lm ?: break
 
-                    // 1) Registrar el proveedor de prueba (solo una vez)
                     if (!providerAdded) {
                         try {
                             lm.addTestProvider(
@@ -60,32 +63,34 @@ class MockService : Service() {
                             providerAdded = true
                             Log.i("MockService", "addTestProvider OK")
                         } catch (se: SecurityException) {
-                            Log.e("MockService",
-                                "NO estás seleccionado como 'app de ubicación ficticia' en Opciones de desarrollador")
+                            Log.e("MockService", "SecurityException: no eres app de ubicación ficticia")
+                            notificar("ERROR: activa 'ubicación ficticia' en Opciones de desarrollador")
                             Thread.sleep(3000)
                             continue
                         } catch (e: IllegalArgumentException) {
-                            providerAdded = true   // ya estaba agregado
+                            providerAdded = true
                         } catch (e: Exception) {
+                            notificar("ERROR: ${e.javaClass.simpleName}: ${e.message}")
                             Thread.sleep(1000)
                             continue
                         }
                     }
 
-                    // 2) Marcarlo como habilitado
                     try { lm.setTestProviderEnabled(LocationManager.GPS_PROVIDER, true) } catch (e: Exception) {}
 
-                    // 3) Inyectar la ubicación actual del simulador
-                    MockHolder.location?.let { loc ->
+                    val loc = MockHolder.location
+                    if (loc == null) {
+                        notificar("Esperando coordenadas… mueve el marcador en la app")
+                    } else {
                         loc.provider = LocationManager.GPS_PROVIDER
                         try {
                             lm.setTestProviderLocation(LocationManager.GPS_PROVIDER, loc)
+                            notificar("OK: ${"%.5f".format(loc.latitude)}, ${"%.5f".format(loc.longitude)}")
                         } catch (e: Exception) {
-                            Log.w("MockService", "setTestProviderLocation falló", e)
+                            notificar("ERROR al inyectar: ${e.message}")
                         }
                     }
-
-                    Thread.sleep(500)
+                    Thread.sleep(1000)
                 }
             }
             worker?.start()
@@ -96,7 +101,7 @@ class MockService : Service() {
     private fun crearCanal() {
         if (Build.VERSION.SDK_INT >= 26) {
             val ch = NotificationChannel("mock", "Simulación GPS", NotificationManager.IMPORTANCE_LOW)
-            getSystemService(NotificationManager::class.java).createNotificationChannel(ch)
+            nm.createNotificationChannel(ch)
         }
     }
 
