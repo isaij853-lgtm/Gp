@@ -72,12 +72,8 @@ class MockService : Service() {
                         }
                     }
 
-                    // 2) Marcarlo como habilitado y con posición disponible
+                    // 2) Marcarlo como habilitado
                     try { lm.setTestProviderEnabled(LocationManager.GPS_PROVIDER, true) } catch (e: Exception) {}
-                    try { lm.setTestProviderStatus(
-                            LocationManager.GPS_PROVIDER,
-                            LocationManager.AVAILABLE, null, System.currentTimeMillis())
-                    } catch (e: Exception) {}
 
                     // 3) Inyectar la ubicación actual del simulador
                     MockHolder.location?.let { loc ->
