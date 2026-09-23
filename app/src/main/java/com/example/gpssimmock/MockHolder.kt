@@ -13,20 +13,19 @@ object MockHolder {
     fun update(lat: Double, lon: Double) {
         val now = SystemClock.elapsedRealtimeNanos()
         val prev = location
-        val l = Location("gps").apply {
-            latitude = lat
-            longitude = lon
-            accuracy = 3.0f
-            altitude = 2240.0          // altitud aprox. del Valle de México
-            time = System.currentTimeMillis()
-            elapsedRealtimeNanos = now
-        }
+        val l = Location("gps")
+        l.latitude = lat
+        l.longitude = lon
+        l.accuracy = 3.0f
+        l.altitude = 2240.0          // altitud aprox. del Valle de México
+        l.time = System.currentTimeMillis()
+        l.elapsedRealtimeNanos = now
         if (prev != null && active) {
             val dt = (now - prev.elapsedRealtimeNanos) / 1_000_000_000f
             if (dt > 0.15f) {
-                val dist = prev.distanceTo(l)          // metros (horizontal)
-                speed = (dist / dt).coerceIn(0f, 40f)  // m/s, máx ~144 km/h
-                bearing = prev.bearingTo(l)            // rumbo en grados
+                val dist = prev.distanceTo(l)           // metros (horizontal)
+                l.speed = (dist / dt).coerceIn(0f, 40f) // m/s, máx ~144 km/h
+                l.bearing = prev.bearingTo(l)           // rumbo en grados
             }
         }
         location = l
