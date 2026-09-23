@@ -4,27 +4,31 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
+import android.content.Context
 import android.content.Intent
+import android.location.Criteria
+import android.location.LocationManager
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
-import com.google.android.gms.location.LocationServices
 
 /**
  * Servicio en primer plano que inyecta la última coordenada del simulador
- * como ubicación ficticia del sistema (requiere ser la app de ubicación
- * ficticia seleccionada en Opciones de desarrollador).
+ * como ubicación de prueba del proveedor GPS puro (LocationManager).
+ * Requiere: app seleccionada como "app de ubicación ficticia" en Opciones
+ * de desarrollador + permiso de ubicación.
  */
 class MockService : Service() {
 
     private var running = false
     private var worker: Thread? = null
+    private var providerAdded = false
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
-        MockHolder.fused = LocationServices.getFusedLocationProviderClient(this)
+        MockHolder.lm = getSystemService(Context.LOCATION_SERVICE) as LocationManager
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -41,30 +45,50 @@ class MockService : Service() {
             running = true
             MockHolder.active = true
             worker = Thread {
-                var mockMode = false
                 while (running) {
-                    if (!mockMode) {
+                    val lm = MockHolder.lm ?: break
+
+                    // 1) Registrar el proveedor de prueba (solo una vez)
+                    if (!providerAdded) {
                         try {
-                            MockHolder.fused?.setMockMode(true)
-                            mockMode = true
-                            Log.i("MockService", "setMockMode(true) OK")
+                            lm.addTestProvider(
+                                LocationManager.GPS_PROVIDER,
+                                false, false, false, false,
+                                true, true, true,
+                                Criteria.POWER_LOW, Criteria.ACCURACY_FINE
+                            )
+                            providerAdded = true
+                            Log.i("MockService", "addTestProvider OK")
                         } catch (se: SecurityException) {
                             Log.e("MockService",
-                                "Esta app NO está seleccionada como 'app de ubicación ficticia' en Opciones de desarrollador")
+                                "NO estás seleccionado como 'app de ubicación ficticia' en Opciones de desarrollador")
                             Thread.sleep(3000)
                             continue
+                        } catch (e: IllegalArgumentException) {
+                            providerAdded = true   // ya estaba agregado
                         } catch (e: Exception) {
                             Thread.sleep(1000)
                             continue
                         }
                     }
+
+                    // 2) Marcarlo como habilitado y con posición disponible
+                    try { lm.setTestProviderEnabled(LocationManager.GPS_PROVIDER, true) } catch (e: Exception) {}
+                    try { lm.setTestProviderStatus(
+                            LocationManager.GPS_PROVIDER,
+                            LocationManager.AVAILABLE, null, System.currentTimeMillis())
+                    } catch (e: Exception) {}
+
+                    // 3) Inyectar la ubicación actual del simulador
                     MockHolder.location?.let { loc ->
+                        loc.provider = LocationManager.GPS_PROVIDER
                         try {
-                            MockHolder.fused?.setMockLocation(loc)
+                            lm.setTestProviderLocation(LocationManager.GPS_PROVIDER, loc)
                         } catch (e: Exception) {
-                            Log.w("MockService", "setMockLocation falló", e)
+                            Log.w("MockService", "setTestProviderLocation falló", e)
                         }
                     }
+
                     Thread.sleep(500)
                 }
             }
@@ -83,7 +107,8 @@ class MockService : Service() {
     override fun onDestroy() {
         running = false
         MockHolder.active = false
-        try { MockHolder.fused?.setMockMode(false) } catch (e: Exception) { }
+        try { MockHolder.lm?.removeTestProvider(LocationManager.GPS_PROVIDER) } catch (e: Exception) {}
+        MockHolder.lm = null
         super.onDestroy()
     }
 }
