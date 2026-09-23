@@ -13,11 +13,11 @@ object MockHolder {
     fun update(lat: Double, lon: Double) {
         val now = SystemClock.elapsedRealtimeNanos()
         val prev = location
-        val l = Location(LocationManager.GPS_PROVIDER)   // <- "gps"
+        val l = Location(LocationManager.GPS_PROVIDER)
         l.latitude = lat
         l.longitude = lon
         l.accuracy = 3.0f
-        l.altitude = 2240.0          // <-- CAMBIA AQUÍ la altitud
+        l.altitude = 2240.0          // altitud: cámbiala si quieres
         l.time = System.currentTimeMillis()
         l.elapsedRealtimeNanos = now
         if (prev != null && active) {
